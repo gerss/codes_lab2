@@ -34,17 +34,48 @@ double get_time()
 // GPU kernels
 __global__ void copy_array (float *u, float *u_prev, int N, int BSZ)
 {	/******* write your kernel here! ***/
+
+	int i = threadIdx.x + BSZ*blockIdx.x;
+	int j = threadIdx.y + BSZ*blockIdx.y;
+	int I;
+
+	if(j<N)
+	{	if(i<N)
+		{	I=j*N+i;
+			u_prev[I] = u[I];
+		}
+	}
+
 }
 
 __global__ void update (float *u, float *u_prev, int N, float h, float dt, float alpha, int BSZ)
 {	/***** write your kernel here! ***/
+	
+	int i = threadIdx.x + BSZ*blockIdx.x;
+	int j = threadIdx.y + BSZ*blockIdx.y;
+	int I;
+	
+	if(j<N)
+	{
+		if(i<N)
+		{	I=j*N+i;
+			u[I] = u_prev[I] + alpha*dt/(h*h) * (u_prev[I+1] + u_prev[I-1] + u_prev[I+N] + u_prev[I-N] - 4*u_prev[I]);
+		}
+	}
 }
 
 int main()
 {
+printf("----------------------------------------\n");
+printf(" ALLOCATE AND INITIALIZE DATA ON CPU\n");
+printf("----------------------------------------\n");
+
 	// Allocate in CPU
 	int N = 128;
+	std::cout<<"N° of threads : "<<N*N<<std::endl;
 	int BLOCKSIZE = 16;
+	int block_grid   = int((N-0.5)/BLOCKSIZE+1);
+	std::cout<<"N° of block : "<<block_grid<<std::endl;
 
 	float xmin 	= 0.0f;
 	float xmax 	= 3.5f;
@@ -63,6 +94,12 @@ int main()
 	float *u  	= new float[N*N];
 	float *u_prev  	= new float[N*N];
 
+	printf("\n DATOS INICIALES");
+	std::cout<<"Distancia eje x : "<<xmax-xmin<<std::endl;
+	std::cout<<"dx : "<<h<<std::endl;
+	std::cout<<"Time : "<<time<<std::endl;
+	std::cout<<"dt : "<<dt<<std::endl;
+	std::cout<<"Pasos de tiempo : "<<steps<<std::endl;
 
 	// Generate mesh and intial condition
 	for (int j=0; j<N; j++)
@@ -75,20 +112,50 @@ int main()
 				{u[I] = 200.0f;}
 		}
 	}
-
+printf("\n Generate mesh\n");
+std::cout<<"u[0]="<<u[0]<<std::endl;
+std::cout<<"u[N*N]="<<u[N*N]<<std::endl;
+	
+printf("----------------------------------------\n");
+printf(" ALLOCATE DATA ON GPU\n");
+printf("----------------------------------------\n");
 	// Allocate in GPU
+	float *u_d, *u_prev_d;
+
+	cudaMalloc((void**) &u_d, N*N*sizeof(float));
+	cudaMalloc((void**) &u_prev_d, N*N*sizeof(float));
 
 	// Copy to GPU
+printf(" TRANSFER DATA FROM CPU TO GPU\n");
+printf("----------------------------------------\n");
+
+	cudaMemcpy(u_d, u, N*N*sizeof(float), cudaMemcpyHostToDevice);
+
+std::cout<<"u[0]="<<u_d[0]<<std::endl;
+std::cout<<"u[N*N]="<<u_d[N*N]<<std::endl;
 
 	// Loop 
-	dim3 dimGrid(); // number of blocks?
-	dim3 dimBlock(); // threads per block?
+printf(" RUN KERNEL");
+
+	
+	dim3 dimGrid(block_grid, block_grid); // number of blocks?
+	dim3 dimBlock(BLOCKSIZE,BLOCKSIZE); // threads per block?
+
+	double start = get_time(); //Initial time
 	for (int t=0; t<steps; t++)
 	{	copy_array <<<dimGrid, dimBlock>>> (u_d, u_prev_d, N, BLOCKSIZE);
 		update <<<dimGrid, dimBlock>>> (u_d, u_prev_d, N, h, dt, alpha, BLOCKSIZE);
 	}
+	double finish = get_time(); //Final time
+	double diff = finish - start;
+	std::cout<<"  time ="<<diff<<" [s]"<<std::endl;
 	
 	// Copy result back to host
+printf("----------------------------------------\n");
+printf(" TRANSFER DATA FROM GPU TO CPU\n");
+printf("----------------------------------------\n");
+
+	cudaMemcpy(u, u_d, N*sizeof(float), cudaMemcpyDeviceToHost);
 
 	std::ofstream temperature("temperature_global.txt");
 	for (int j=0; j<N; j++)
@@ -101,7 +168,12 @@ int main()
 
 	temperature.close();
 
+
 	// Free device
 	cudaFree(u_d);
 	cudaFree(u_prev_d);
+
+printf(" FREE MEMORY\n");
+printf("----------------------------------------\n");
+
 }
