@@ -48,6 +48,8 @@ __global__ void copy_array (float *u, float *u_prev, int N, int BSZ)
 
 }
 
+	__syncthreads()
+
 __global__ void update (float *u, float *u_prev, int N, float h, float dt, float alpha, int BSZ)
 {	/***** write your kernel here! ***/
 	
@@ -63,6 +65,7 @@ __global__ void update (float *u, float *u_prev, int N, float h, float dt, float
 		}
 	}
 }
+	__syncthreads()
 
 int main()
 {
@@ -74,7 +77,7 @@ printf("----------------------------------------\n");
 	int N = 128;
 	std::cout<<"N° of threads : "<<N*N<<std::endl;
 	int BLOCKSIZE = 16;
-	int block_grid   = int((N-0.5)/BLOCKSIZE+1);
+	int block_grid   = int((N-0.5)/BLOCKSIZE)+1;
 	std::cout<<"N° of block : "<<block_grid<<std::endl;
 
 	float xmin 	= 0.0f;
@@ -113,8 +116,6 @@ printf("----------------------------------------\n");
 		}
 	}
 printf("\n Generate mesh\n");
-std::cout<<"u[0]="<<u[0]<<std::endl;
-std::cout<<"u[N*N]="<<u[N*N]<<std::endl;
 	
 printf("----------------------------------------\n");
 printf(" ALLOCATE DATA ON GPU\n");
@@ -130,9 +131,6 @@ printf(" TRANSFER DATA FROM CPU TO GPU\n");
 printf("----------------------------------------\n");
 
 	cudaMemcpy(u_d, u, N*N*sizeof(float), cudaMemcpyHostToDevice);
-
-std::cout<<"u[0]="<<u_d[0]<<std::endl;
-std::cout<<"u[N*N]="<<u_d[N*N]<<std::endl;
 
 	// Loop 
 printf(" RUN KERNEL");
@@ -155,7 +153,7 @@ printf("----------------------------------------\n");
 printf(" TRANSFER DATA FROM GPU TO CPU\n");
 printf("----------------------------------------\n");
 
-	cudaMemcpy(u, u_d, N*sizeof(float), cudaMemcpyDeviceToHost);
+	cudaMemcpy(u, u_d, N*N*sizeof(float), cudaMemcpyDeviceToHost);
 
 	std::ofstream temperature("temperature_global.txt");
 	for (int j=0; j<N; j++)
