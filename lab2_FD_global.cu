@@ -37,35 +37,32 @@ __global__ void copy_array (float *u, float *u_prev, int N, int BSZ)
 
 	int i = threadIdx.x + BSZ*blockIdx.x;
 	int j = threadIdx.y + BSZ*blockIdx.y;
-	int I;
+	int I = j*N +i;
 
-	if(j<N)
-	{	if(i<N)
-		{	I=j*N+i;
-			u_prev[I] = u[I];
-		}
+	if(I<N*N)
+	{	
+		u_prev[I] = u[I];
 	}
-
+	//__syncthreads();
 }
 
-	__syncthreads()
 
 __global__ void update (float *u, float *u_prev, int N, float h, float dt, float alpha, int BSZ)
 {	/***** write your kernel here! ***/
 	
 	int i = threadIdx.x + BSZ*blockIdx.x;
 	int j = threadIdx.y + BSZ*blockIdx.y;
-	int I;
+	int I = j*N +i;
 	
-	if(j<N)
+	if((I>N) && (I<N*(N-1)-1))// && (I%N!=0) && (I%N!=N-1))
 	{
-		if(i<N)
-		{	I=j*N+i;
+		if(I%N!=0){u[I]=200;}
+		if(I%(N-1)!=0){u[I]=0;}
 			u[I] = u_prev[I] + alpha*dt/(h*h) * (u_prev[I+1] + u_prev[I-1] + u_prev[I+N] + u_prev[I-N] - 4*u_prev[I]);
-		}
+		
 	}
+	//__syncthreads();
 }
-	__syncthreads()
 
 int main()
 {
@@ -79,6 +76,8 @@ printf("----------------------------------------\n");
 	int BLOCKSIZE = 16;
 	int block_grid   = int((N-0.5)/BLOCKSIZE)+1;
 	std::cout<<"N° of block : "<<block_grid<<std::endl;
+
+	cudaSetDevice(2);
 
 	float xmin 	= 0.0f;
 	float xmax 	= 3.5f;
@@ -97,7 +96,8 @@ printf("----------------------------------------\n");
 	float *u  	= new float[N*N];
 	float *u_prev  	= new float[N*N];
 
-	printf("\n DATOS INICIALES");
+	printf("\n DATOS DEL PROBLEMA\n");
+	printf("-----------------------");
 	std::cout<<"Distancia eje x : "<<xmax-xmin<<std::endl;
 	std::cout<<"dx : "<<h<<std::endl;
 	std::cout<<"Time : "<<time<<std::endl;
@@ -134,7 +134,6 @@ printf("----------------------------------------\n");
 
 	// Loop 
 printf(" RUN KERNEL");
-
 	
 	dim3 dimGrid(block_grid, block_grid); // number of blocks?
 	dim3 dimBlock(BLOCKSIZE,BLOCKSIZE); // threads per block?
@@ -144,7 +143,8 @@ printf(" RUN KERNEL");
 	{	copy_array <<<dimGrid, dimBlock>>> (u_d, u_prev_d, N, BLOCKSIZE);
 		update <<<dimGrid, dimBlock>>> (u_d, u_prev_d, N, h, dt, alpha, BLOCKSIZE);
 	}
-	double finish = get_time(); //Final time
+	double finish = get_time();
+	checkErrors("update");
 	double diff = finish - start;
 	std::cout<<"  time ="<<diff<<" [s]"<<std::endl;
 	
@@ -173,5 +173,4 @@ printf("----------------------------------------\n");
 
 printf(" FREE MEMORY\n");
 printf("----------------------------------------\n");
-
 }
